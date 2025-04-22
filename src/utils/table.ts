@@ -198,13 +198,7 @@ export class Table {
     return await this.svupa.supabase
       .from(this.name)
       .insert(row)
-      .then(({ status }) => {
-        if (status && status != 201) {
-          return false;
-        } else {
-          return true;
-        }
-      });
+      .then(({ status }) => (status >= 200) && (status < 300));
   }
 
   async update(
@@ -218,13 +212,7 @@ export class Table {
     const success = await this.svupa.supabase
       .from(this.name)
       .upsert(row)
-      .then(({ status }) => {
-        if (status != 201) {
-          return false;
-        } else {
-          return true;
-        }
-      });
+      .then(({ status }) => (status >= 200) && (status < 300));
     if (this.optimisticUpdates && success) {
       this._releasePessimisticRowBackup(row);
     } else {
@@ -247,13 +235,7 @@ export class Table {
       .from(this.name)
       .delete()
       .match(row)
-      .then(({ status }) => {
-        if (status && status != 201) {
-          return false;
-        } else {
-          return true;
-        }
-      });
+      .then(({ status }) => (status >= 200) && (status < 300));
     if (this.optimisticUpdates) {
       if (success) {
         this._releasePessimisticRowBackup(row);
