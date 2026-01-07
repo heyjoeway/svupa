@@ -4,6 +4,11 @@ import type { Svupa } from "./svupa.js";
 import { Conditions, Condition } from "./condition.js";
 import { TableStore } from "./tableStore.js";
 
+type Prefilter = {
+  value: string,
+  key: string
+};
+
 export class Table {
   name: string;
   schema: string;
@@ -15,18 +20,21 @@ export class Table {
   rowCallback: Function;
   pessimisticBackup: PessimisticBackup;
   optimisticUpdates: boolean;
+  __prefilter: Prefilter | undefined;
 
   constructor(
     svupa: Svupa,
     name: string,
     keys: primaryKeys | Array<string> | string,
     schema: string = "public",
-    optimistic: boolean = false
+    optimistic: boolean = false,
+    prefilter: Prefilter | undefined = undefined
   ) {
     this.svupa = svupa;
     this.name = name;
     this.schema = schema;
     this.optimisticUpdates = optimistic;
+    this.__prefilter = prefilter;
     this.pessimisticBackup = new PessimisticBackup(this);
     this.primaryKeys =
       keys instanceof primaryKeys ? keys : new primaryKeys(keys);
@@ -49,8 +57,18 @@ export class Table {
       .channel(channel_name)
       .on(
         "postgres_changes",
-        { event: "*", schema: this.schema, table: this.name },
-        /*
+        { 
+          event: "*",
+          schema: this.schema,
+          table: this.name,
+          // see note below. Generally only for when filter is unchanging
+          filter: (
+            this.__prefilter
+            ? `${this.__prefilter.key}=eq.${this.__prefilter.value}`
+            : undefined
+          )
+        },
+        /*l
                 Filters are not applied for two reasons:
                     1.  There is no AND operator in Supabase Realtime, so only filtering for single conditions is possible.
                     2.  We need updates on rows that are not relevant anymore (according to the filter) to delete them from the store.
@@ -137,42 +155,59 @@ export class Table {
    * Retrieves all rows from the table and adds them to the store.
    */
   async _addInitialRows() {
-    let count_query = this.svupa.supabase
+    const pageSize = 1000;
+
+    let countQuery = this.svupa.supabase
       .from(this.name)
-      .select("*", { count: "exact", head: false });
-    count_query = this.conditions.toQuery(count_query);
-    const {
-      data: count_data,
-      error: count_error,
-      count: count,
-    } = await count_query;
-    if (count_error) {
-      console.warn("error", count_error);
-      return;
+      .select("*", { count: "exact", head: true })
+      
+    if (this.__prefilter) {
+      countQuery = countQuery.eq(
+        this.__prefilter.key,
+        this.__prefilter.value
+      );
     }
-    for (let row of count_data) {
-      this._upsertInternal(row);
-    }
+    
+    // 1. Count query (list-scoped)
+    const { count, error: countError } = await countQuery;
 
-    // if there were less than 1000 rows we already fetched all of them
-    if (!count || count < 1000) {
+    if (countError || !count) {
+      if (countError) console.warn("error", countError);
       return;
     }
 
-    // otherwise, we need to use pagination/range to fetch the remaining rows
-    let start = 1000;
-    let end = 2000;
-    let query = this.conditions.toQuery(
-      this.svupa.supabase.from(this.name).select("*")
-    );
+    // 2. Paginated fetch (same filter as realtime)
+    let start = 0;
 
     while (start < count) {
-      if (end > count) {
-        end = count;
+      const end = start + pageSize - 1;
+
+      let fetchQuery = this.svupa.supabase
+        .from(this.name)
+        .select("*");
+        
+      if (this.__prefilter) {
+        fetchQuery = fetchQuery.eq(
+          this.__prefilter.key,
+          this.__prefilter.value
+        );
       }
-      this._addRowsFromRangeRequest(query, start, end);
-      start = end;
-      end += 1000;
+      
+      fetchQuery = fetchQuery.range(start, end);
+      fetchQuery = this.conditions.toQuery(fetchQuery);
+
+      const { data, error } = await fetchQuery;
+
+      if (error) {
+        console.warn("error", error);
+        return;
+      }
+
+      for (const row of data ?? []) {
+        this._upsertInternal(row);
+      }
+
+      start += pageSize;
     }
   }
 
