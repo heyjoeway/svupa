@@ -1,10 +1,10 @@
 import type { primaryKeys } from "./primaryKeys.js";
 import type { Conditions, Condition } from "./condition.js";
 
-export class TableRow {
-    data: Record<string, any>;
+export class TableRow<T extends Record<string, any>> {
+    data: T;
     id: string;
-    constructor(data: Record<string, any>, keys: primaryKeys) {
+    constructor(data: T, keys: primaryKeys) {
         this.data = data;
         this.id = keys.generateRowID(data);
     }

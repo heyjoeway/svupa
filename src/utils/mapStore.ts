@@ -7,7 +7,7 @@ export type MapStore<T> = {
   upsert: (id: string, data: Object) => void;
   remove: (id: string) => void;
   get: (id: string) => T | undefined;
-  getFirstRow: (id: string) => T | undefined;
+  getFirstRow: () => T | undefined;
 };
 
 export function mapStore(): MapStore<any> {

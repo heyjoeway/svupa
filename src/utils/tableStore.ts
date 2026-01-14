@@ -1,14 +1,14 @@
 import { TableRow } from "./tableRow.js";
 import { mapStore, type MapStore } from "./mapStore.js";
-import type { Table } from "./table.js";
+import { Table, type BackupRow } from "./table.js";
 import { derived, type Readable } from "svelte/store";
 
-export class TableStore {
-  __store: MapStore<TableRow>;
-  __table: Table;
-  __externalStore: Readable<TableRow[]>;
+export class TableStore<T extends Record<string, any>> {
+  __store: MapStore<TableRow<T>>;
+  __table: Table<T>;
+  __externalStore: Readable<TableRow<T>[]>;
 
-  constructor(table: Table) {
+  constructor(table: Table<T>) {
     this.__store = mapStore();
     this.__table = table;
     this.__externalStore = derived(this.__store, ($store) => {
@@ -16,32 +16,34 @@ export class TableStore {
     });
   }
 
-  __convertRow(row: TableRow | Object): TableRow {
-    return row instanceof TableRow
-      ? row
-      : new TableRow(row, this.__table.primaryKeys);
+  __convertRow(row: TableRow<T> | BackupRow<T> | T): TableRow<T> {
+    if (row instanceof TableRow) return row;
+    if (row.row) { // BackupRow (TODO: improve this type check)
+      return row.row; // fight the powah
+    }
+    return new TableRow<T>(row as T, this.__table.primaryKeys);
   }
 
-  upsert(row: TableRow | Object) {
+  upsert(row: TableRow<T> | BackupRow<T> | T) {
     const tableRow = this.__convertRow(row);
     this.__store.upsert(tableRow.id, tableRow.data);
   }
 
-  delete(row: TableRow | Object) {
+  delete(row: TableRow<T> | T) {
     const tableRow = this.__convertRow(row);
     this.__store.remove(tableRow.id);
   }
 
-  getRow(id: string | Record<string, any>): TableRow | undefined {
+  getRow(id: string | Record<string, any>): TableRow<T> | undefined {
     if (typeof id === "string") return this.__store.get(id);
     return this.getRow(this.__table.primaryKeys.generateRowID(id));
   }
 
-  getFirstRow(): TableRow | undefined {
+  getFirstRow(): TableRow<T> | undefined {
     return this.__store.getFirstRow();
   }
 
-  subscribe(run: (value: Map<string, TableRow>) => unknown) {
+  subscribe(run: (value: TableRow<T>[]) => void) {
     return this.__externalStore.subscribe(run);
   }
 }

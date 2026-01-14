@@ -9,16 +9,16 @@ type Prefilter = {
   key: string
 };
 
-export class Table {
+export class Table<T extends Record<string, any>> {
   name: string;
   schema: string;
   primaryKeys: primaryKeys;
-  __store: TableStore;
+  __store: TableStore<T>;
   conditions: Conditions;
   svupa: Svupa;
   channel: any;
   rowCallback: Function;
-  pessimisticBackup: PessimisticBackup;
+  pessimisticBackup: PessimisticBackup<T>;
   optimisticUpdates: boolean;
   __prefilter: Prefilter | undefined;
 
@@ -38,9 +38,9 @@ export class Table {
     this.pessimisticBackup = new PessimisticBackup(this);
     this.primaryKeys =
       keys instanceof primaryKeys ? keys : new primaryKeys(keys);
-    this.__store = new TableStore(this);
+    this.__store = new TableStore<T>(this);
     this.conditions = new Conditions();
-    this.rowCallback = (row: TableRow) => {
+    this.rowCallback = (row: TableRow<T>) => {
       return row;
     };
   }
@@ -114,11 +114,11 @@ export class Table {
     return this;
   }
 
-  getRow(keys: Record<string, any>): TableRow | undefined {
+  getRow(keys: Record<string, any>): TableRow<T> | undefined {
     return this.__store.getRow(keys);
   }
 
-  getFirstRow(): TableRow | undefined {
+  getFirstRow(): TableRow<T> | undefined {
     return this.__store.getFirstRow();
   }
 
@@ -128,7 +128,7 @@ export class Table {
   }
 
   __parseSubscriptionPayload(payload: any): {
-    tableRow: TableRow;
+    tableRow: TableRow<T>;
     event: string;
     timestamp: Date;
   } {
@@ -221,7 +221,7 @@ export class Table {
     }
   }
 
-  subscribe(run) {
+  subscribe(run: (value: TableRow<T>[]) => void) {
     // Svelte Store contract: Subscribe to changes in the table.
     return this.__store.subscribe(run);
   }
@@ -237,7 +237,7 @@ export class Table {
   }
 
   async update(
-    row: Record<string, any>
+    row: T | TableRow<T>
   ): Promise<{ invokeTime: Date; status: boolean }> {
     let invokeTime = new Date();
     if (this.optimisticUpdates) {
@@ -261,7 +261,7 @@ export class Table {
     };
   }
 
-  async delete(row: Record<string, any>): Promise<boolean> {
+  async delete(row: TableRow<T>): Promise<boolean> {
     if (this.optimisticUpdates) {
       this._createPessimisticRowBackup(row);
       this._deleteInternal(row);
@@ -289,7 +289,7 @@ export class Table {
 
   // internal
 
-  _upsertInternal(row: Object | TableRow, timestamp?: Date) {
+  _upsertInternal(row: T | BackupRow<T> | TableRow<T>, timestamp?: Date) {
     const tableRow = row instanceof TableRow ? row : new TableRow(row, this.primaryKeys);
     if (timestamp && this.pessimisticBackup.has(tableRow.id)) {
         // if the row is still in pessimistic backup and the change is invoked by a regular subscription, ignore the change
@@ -298,7 +298,7 @@ export class Table {
     this.__store.upsert(row);
   }
 
-  _deleteInternal(row: Object | TableRow) {
+  _deleteInternal(row: T | TableRow<T>) {
     this.__store.delete(row);
   }
 
@@ -333,30 +333,30 @@ export class Table {
   }
 }
 
-type BackupRow = {
-  row: TableRow;
+export type BackupRow<T> = {
+  row: TableRow<T>;
   subscribers: number;
 };
 
-class PessimisticBackup {
-  data: Map<string, BackupRow>;
-  table: Table;
+class PessimisticBackup<T> {
+  data: Map<string, BackupRow<T>>;
+  table: Table<T>;
 
-  constructor(table: Table) {
+  constructor(table: Table<T>) {
     this.table = table;
     this.data = new Map();
   }
 
-  backup(row: TableRow) {
+  backup(row: TableRow<T>) {
     if (this.has(row.id)) {
       this.data.get(row.id).subscribers++;
       return;
     }
-    const backupRow: BackupRow = { row: structuredClone(row), subscribers: 1 };
+    const backupRow: BackupRow<T> = { row: structuredClone(row), subscribers: 1 };
     this.data.set(row.id, backupRow);
   }
 
-  release(row: TableRow) {
+  release(row: TableRow<T>) {
     if (!this.has(row.id)) {
       throw new Error("Row not found in backup");
     }
