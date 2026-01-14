@@ -16,7 +16,7 @@ export class TableStore<T extends Record<string, any>> {
     });
   }
 
-  __convertRow(row: TableRow<T> | BackupRow<T> | T): TableRow<T> {
+  __convertRow(row: TableRow<T> | BackupRow<T> | Partial<T>): TableRow<T> {
     if (row instanceof TableRow) return row;
     if (row.row) { // BackupRow (TODO: improve this type check)
       return row.row; // fight the powah
@@ -24,12 +24,12 @@ export class TableStore<T extends Record<string, any>> {
     return new TableRow<T>(row as T, this.__table.primaryKeys);
   }
 
-  upsert(row: TableRow<T> | BackupRow<T> | T) {
+  upsert(row: TableRow<T> | BackupRow<T> | Partial<T>) {
     const tableRow = this.__convertRow(row);
     this.__store.upsert(tableRow.id, tableRow.data);
   }
 
-  delete(row: TableRow<T> | T) {
+  delete(row: TableRow<T> | Partial<T>) {
     const tableRow = this.__convertRow(row);
     this.__store.remove(tableRow.id);
   }

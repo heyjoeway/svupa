@@ -237,7 +237,7 @@ export class Table<T extends Record<string, any>> {
   }
 
   async update(
-    row: T | TableRow<T>
+    row: Partial<T> | TableRow<T>
   ): Promise<{ invokeTime: Date; status: boolean }> {
     let invokeTime = new Date();
     if (this.optimisticUpdates) {
@@ -261,7 +261,7 @@ export class Table<T extends Record<string, any>> {
     };
   }
 
-  async delete(row: TableRow<T>): Promise<boolean> {
+  async delete(row: TableRow<T> | Partial<T>): Promise<boolean> {
     if (this.optimisticUpdates) {
       this._createPessimisticRowBackup(row);
       this._deleteInternal(row);
@@ -289,7 +289,7 @@ export class Table<T extends Record<string, any>> {
 
   // internal
 
-  _upsertInternal(row: T | BackupRow<T> | TableRow<T>, timestamp?: Date) {
+  _upsertInternal(row: Partial<T> | BackupRow<T> | TableRow<T>, timestamp?: Date) {
     const tableRow = row instanceof TableRow ? row : new TableRow(row, this.primaryKeys);
     if (timestamp && this.pessimisticBackup.has(tableRow.id)) {
         // if the row is still in pessimistic backup and the change is invoked by a regular subscription, ignore the change
@@ -298,7 +298,7 @@ export class Table<T extends Record<string, any>> {
     this.__store.upsert(row);
   }
 
-  _deleteInternal(row: T | TableRow<T>) {
+  _deleteInternal(row: Partial<T> | TableRow<T>) {
     this.__store.delete(row);
   }
 
